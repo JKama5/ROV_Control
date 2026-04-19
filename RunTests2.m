@@ -31,7 +31,6 @@ tests(6) = struct('name', 'The Deep Freeze', 'wind', 3, 'z0', 100, 'zf', 100, 'h
 % =========================================================
 % EXECUTE BATCH SIMULATIONS
 % =========================================================
-
 % Loop through each of the 6 tests
 for t = 1:length(tests)
     fprintf('==================================================\n');
@@ -42,10 +41,15 @@ for t = 1:length(tests)
     for i = 1:length(test_seeds)
         fprintf('  Running Seed %d ... ', test_seeds(i));
         
+        % Initialize a clean metrics struct for this specific run
+        test_metrics = struct();
+        test_metrics.test_name = tests(t).name;
+        test_metrics.seed = test_seeds(i);
+        
         % 1. Create the SimulationInput object
         dummy = Simulink.SimulationInput(mdl);
         
-        % 2. Pass the specific test parameters into the simulation sandbox
+        % 2. Pass the specific test parameters
         dummy = setVariable(dummy, 'active_seed', test_seeds(i));
         dummy = setVariable(dummy, 'WindConditionsEnum', tests(t).wind);
         dummy = setVariable(dummy, 'Initial_depth', tests(t).z0);
@@ -63,7 +67,7 @@ for t = 1:length(tests)
         
         % 5. Test-Specific Analytics
         if t == 1 
-            % --- Broadside Wall Logic (Find t_worst) ---
+            % --- Broadside Wall Logic ---
             direction_change = diff(direction_data);
             l = length(direction_change);
             
@@ -76,64 +80,54 @@ for t = 1:length(tests)
             global_worst_index = start_idx + local_worst_index - 1;
             t_worst = time_data(global_worst_index + 1); 
             
-            fprintf('Done. Most violent shift at t = %.1f s\n', t_worst);
+            % Save to struct and print
+            test_metrics.t_worst = t_worst;
+            test_metrics.message = sprintf('Most violent shift at t = %.1f s', t_worst);
+            fprintf('Done. %s\n', test_metrics.message);
             
         elseif t == 2 || t == 4
             % --- Ascent/Descent Settling Time Logic ---
-            % Extract the depth data from logsout
             depth_signal = dummy_out.logsout.get('z');
             depth_data = depth_signal.Values.Data;
             
-            % If your scope logs both Reference and Actual on the same wire,
-            % it creates a 2D matrix. We only want the actual physical depth.
             if size(depth_data, 2) > 1
-                depth_data = depth_data(:, 1); % Grabs the first column (usually the actual state)
+                depth_data = depth_data(:, 1); 
             end
             
             target_depth = tests(t).zf;
             start_depth = tests(t).z0;
-            
-            % Define the tolerance band (e.g., 2% of the total distance traveled)
-            % For a 95m ascent, this means it is "complete" when it stays within 1.9m of the target.
             pct_tol = 0.02;
             tolerance = pct_tol * abs(target_depth - start_depth); 
             
-            % Find every single timestamp where the AUV is OUTSIDE the tolerance band
             error_array = abs(depth_data - target_depth);
             outside_tol_indices = find(error_array > tolerance);
             
-            % Calculate Settling Time
             if isempty(outside_tol_indices)
-                % It was already at the target depth
-                t_complete = 0;
-                fprintf('Done. Ascent/Descent complete at t = 0.0 s\n');
-                
+                test_metrics.t_complete = 0;
+                test_metrics.message = 'Ascent/Descent complete at t = 0.0 s';
             elseif outside_tol_indices(end) == length(depth_data)
-                % If the very last index of the simulation is STILL outside the tolerance,
-                % the controller failed to reach the target before the 10 hours ended.
-                t_complete = NaN; 
-                fprintf('Done. WARNING: Failed to settle within %d%% of target.\n', round(pct_tol*100));
-                
+                test_metrics.t_complete = NaN; 
+                test_metrics.message = sprintf('WARNING: Failed to settle within %d%% of target.', round(pct_tol*100));
             else
-                % The completion time is the exact time step immediately after it 
-                % exits the tolerance band for the very last time.
                 settling_index = outside_tol_indices(end) + 1;
                 t_complete = time_data(settling_index);
-                fprintf('Done. Ascent/Descent complete at t = %.1f s\n', t_complete);
+                test_metrics.t_complete = t_complete;
+                test_metrics.message = sprintf('Ascent/Descent complete at t = %.1f s', t_complete);
             end
-
+            
+            fprintf('Done. %s\n', test_metrics.message);
+            
         else
-            % --- Placeholder for other test analytics ---
-            % (e.g., Test 5 & 6 complex maneuver tracking error)
+            % --- Other Tests ---
+            test_metrics.message = 'No specific time analytics defined for this test.';
             fprintf('Done.\n');
         end
         
-        % Optional: If you want to automatically save the dataset for later plotting
+        % 6. Save BOTH the raw simulation output and the analytics struct
         filename = sprintf('%s_Seed_%d.mat', strrep(tests(t).name, ' ', '_'), test_seeds(i));
-        save(filename, 'dummy_out');
+        save(filename, 'dummy_out', 'test_metrics');
         
     end
-    fprintf('\n'); % Spacing between test tiers
+    fprintf('\n'); 
 end
-
 disp('All Test Tiers Complete!');
