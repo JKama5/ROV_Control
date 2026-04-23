@@ -65,15 +65,11 @@ for t = 1:length(tests)
 
         % Run the simulation
         dummy_out = sim(dummy);
-        % DEBUG — paste after dummy_out = sim(dummy); then remove when done
-        disp('=== yout signals ===');
-        disp(dummy_out.yout.getElementNames());
-        disp('=== logsout signals ===');
-        try
-            disp(dummy_out.logsout.getElementNames());
-        catch
-            disp('logsout not present');
-        end
+        % try
+        %     disp(dummy_out.logsout.getElementNames());
+        % catch
+        %     disp('logsout not present');
+        % end
         % Extract current direction signal (available in all tests)
         direction_signal = dummy_out.yout.get('Pre_Wrap_Current_Direction');
         direction_data   = direction_signal.Values.Data;
@@ -173,16 +169,15 @@ for t = 1:length(tests)
             % Metrics: heading settling time + depth disturbance during maneuver.
 
             % --- Heading settling time ---
-            heading_signal = dummy_out.logsout.get('psi');
-            disp(class(heading_signal))
-            disp(heading_signal)
-            heading_data   = heading_signal;
+            heading_signal = dummy_out.logsout.get('yaw');
+            heading_data   = heading_signal.Values.Data;
+            time_data      = heading_signal.Values.Time;
             if size(heading_data, 2) > 1; heading_data = heading_data(:,1); end
 
-            target_heading = deg2rad(tests(t).hf);
+            target_heading = tests(t).hf;
             pct_tol_h      = 0.02;
-            tolerance_h    = max(deg2rad(2), pct_tol_h * abs(target_heading - deg2rad(tests(t).h0)));
-
+            tolerance_h = max(0.05, pct_tol_h * abs(target_heading - tests(t).h0));
+            
             % Wrap heading error to [-pi, pi]
             heading_err = wrapToPi(heading_data - target_heading);
             outside_h   = find(abs(heading_err) > tolerance_h);
