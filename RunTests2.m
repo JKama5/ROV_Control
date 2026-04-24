@@ -12,29 +12,29 @@ test_seeds = [111, 222, 333];
 % Name of your Simulink model file
 mdl = 'AUVdepthHeadingControlWithRealisticWind';
 load_system(mdl);
-
+clear tests;
 % =========================================================
 % DEFINE THE TEST SUITE (Tiers 1, 2, and 3)
 % =========================================================
 % WindEnum: 1=Calm, 2=Normal, 3=Stormy
 
 % Test 1: The Broadside Wall (Stormy, 5m Hold, Max Whiplash)
-tests(1) = struct('name', 'The Broadside Wall',       'wind', 3, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0);
+tests(1) = struct('name', 'The Broadside Wall',       'wind', 3, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', 0.1);
 
 % Test 2: The Ekman Corkscrew (Normal, 1m to 50m Descent, Hold Heading)
-tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', 2, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0);
+tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', 2, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0,   'Kpz', 0.1);
 
 % Test 3: The Silent Windup (Calm, 30m Hold)
-tests(3) = struct('name', 'The Silent Windup',        'wind', 1, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0);
+tests(3) = struct('name', 'The Silent Windup',        'wind', 1, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0,   'Kpz', 0.1);
 
 % Test 4: The Surface Breach (Stormy, 100m to 5m Ascent)
-tests(4) = struct('name', 'The Surface Breach',       'wind', 3, 'z0', 100, 'zf', 5,   'h0', 0, 'hf', 0);
+tests(4) = struct('name', 'The Surface Breach',       'wind', 3, 'z0', 100, 'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', 0.02);
 
 % Test 5: The Operational Envelope (Normal, 10m Hold, Maneuver 0 to -60 deg)
-tests(5) = struct('name', 'The Operational Envelope', 'wind', 2, 'z0', 10,  'zf', 10,  'h0', 0, 'hf', -60);
+tests(5) = struct('name', 'The Operational Envelope', 'wind', 2, 'z0', 10,  'zf', 10,  'h0', 0, 'hf', -60, 'Kpz', 0.1);
 
 % Test 6: The Deep Freeze (Stormy, 100m Hold, Maneuver 0 to -60 deg)
-tests(6) = struct('name', 'The Deep Freeze',          'wind', 3, 'z0', 100, 'zf', 100, 'h0', 0, 'hf', -60);
+tests(6) = struct('name', 'The Deep Freeze',          'wind', 3, 'z0', 100, 'zf', 100, 'h0', 0, 'hf', -60, 'Kpz', 0.02);
 
 % =========================================================
 % EXECUTE BATCH SIMULATIONS
@@ -62,7 +62,11 @@ for t = 1:length(tests)
         dummy = setVariable(dummy, 'Final_depth',         tests(t).zf);
         dummy = setVariable(dummy, 'Initial_heading',     tests(t).h0);
         dummy = setVariable(dummy, 'Final_heading',       tests(t).hf);
-
+        dummy = setVariable(dummy, 'Kpz', tests(t).Kpz);
+        blk = find_system(mdl, 'BlockType', 'Step');
+        depth_blk = blk{1};  % Desired depth block
+        dummy = setBlockParameter(dummy, depth_blk, 'Before', num2str(tests(t).z0));
+         
         % Run the simulation
         dummy_out = sim(dummy);
         % try
