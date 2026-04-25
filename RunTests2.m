@@ -5,10 +5,11 @@
 %
 % Run ROV_PID_Init.m first to load controller gains into workspace.
 % =========================================================
-
+clear workspace
 % Define your test seeds
 test_seeds = [111, 222, 333];
-
+% test_seeds = [111];
+tests_to_run = [1:6];
 % Name of your Simulink model file
 mdl = 'AUVdepthHeadingControlWithRealisticWind';
 load_system(mdl);
@@ -17,29 +18,33 @@ clear tests;
 % DEFINE THE TEST SUITE (Tiers 1, 2, and 3)
 % =========================================================
 % WindEnum: 1=Calm, 2=Normal, 3=Stormy
+kp=0.08;
+ki=0;
+kd=20;
+
 
 % Test 1: The Broadside Wall (Stormy, 5m Hold, Max Whiplash)
-tests(1) = struct('name', 'The Broadside Wall',       'wind', 3, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', 0.1);
+tests(1) = struct('name', 'The Broadside Wall',       'wind', 3, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
-% Test 2: The Ekman Corkscrew (Normal, 1m to 50m Descent, Hold Heading)
-tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', 2, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0,   'Kpz', 0.1);
+% Test 2: The Ekman Corkscrew (Stormy, 1m to 50m Descent, Hold Heading)
+tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', 3, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % Test 3: The Silent Windup (Calm, 30m Hold)
-tests(3) = struct('name', 'The Silent Windup',        'wind', 1, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0,   'Kpz', 0.1);
+tests(3) = struct('name', 'The Silent Windup',        'wind', 1, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % Test 4: The Surface Breach (Stormy, 100m to 5m Ascent)
-tests(4) = struct('name', 'The Surface Breach',       'wind', 3, 'z0', 100, 'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', 0.02);
+tests(4) = struct('name', 'The Surface Breach',       'wind', 3, 'z0', 100, 'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % Test 5: The Operational Envelope (Normal, 10m Hold, Maneuver 0 to -60 deg)
-tests(5) = struct('name', 'The Operational Envelope', 'wind', 2, 'z0', 10,  'zf', 10,  'h0', 0, 'hf', -60, 'Kpz', 0.1);
+tests(5) = struct('name', 'The Operational Envelope', 'wind', 2, 'z0', 10,  'zf', 10,  'h0', 0, 'hf', -60, 'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % Test 6: The Deep Freeze (Stormy, 100m Hold, Maneuver 0 to -60 deg)
-tests(6) = struct('name', 'The Deep Freeze',          'wind', 3, 'z0', 100, 'zf', 100, 'h0', 0, 'hf', -60, 'Kpz', 0.02);
+tests(6) = struct('name', 'The Deep Freeze',          'wind', 3, 'z0', 100, 'zf', 100, 'h0', 0, 'hf', -60, 'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % =========================================================
 % EXECUTE BATCH SIMULATIONS
 % =========================================================
-for t = 1:length(tests)
+for t = tests_to_run
     fprintf('==================================================\n');
     fprintf('STARTING TEST: %s\n', tests(t).name);
     fprintf('==================================================\n');
@@ -63,6 +68,8 @@ for t = 1:length(tests)
         dummy = setVariable(dummy, 'Initial_heading',     tests(t).h0);
         dummy = setVariable(dummy, 'Final_heading',       tests(t).hf);
         dummy = setVariable(dummy, 'Kpz', tests(t).Kpz);
+        dummy = setVariable(dummy, 'Kiz', tests(t).Kiz);
+        dummy = setVariable(dummy, 'Kdz', tests(t).Kdz);
         blk = find_system(mdl, 'BlockType', 'Step');
         depth_blk = blk{1};  % Desired depth block
         dummy = setBlockParameter(dummy, depth_blk, 'Before', num2str(tests(t).z0));
@@ -89,9 +96,9 @@ for t = 1:length(tests)
             direction_change = diff(direction_data);
             l = length(direction_change);
 
-            offset    = round(l / 10);
+            offset    = round(l / 4);
             start_idx = max(1, offset);
-            end_idx   = l - offset;
+            end_idx   = l - round(l/10);
 
             sliced_direction_change = direction_change(start_idx:end_idx);
             [~, local_worst_index]  = max(abs(sliced_direction_change));
@@ -112,39 +119,53 @@ for t = 1:length(tests)
 
             test_metrics.t_worst       = t_worst;
             test_metrics.max_depth_err = max_depth_error;
-            test_metrics.message       = sprintf('Most violent shift at t=%.1fs | Peak depth error: %.2fm', ...
+            test_metrics.message       = sprintf('Most violent shift at t=%.1fs | Peak depth error: %.4fm', ...
                 t_worst, max_depth_error);
             fprintf('Done. %s\n', test_metrics.message);
 
         elseif t == 2 || t == 4
-            % --- Tests 2 & 4: Ascent / Descent Settling Time ---
+            % --- Tests 2 & 4: Ascent / Descent Settling Time & Overshoot ---
             depth_signal = dummy_out.logsout.get('z');
             depth_data   = depth_signal.Values.Data;
             if size(depth_data, 2) > 1; depth_data = depth_data(:,1); end
 
             target_depth = tests(t).zf;
             start_depth  = tests(t).z0;
+            
+            % --- Calculate Overshoot ---
+            if target_depth < start_depth
+                % Ascent: Overshoot is the minimum depth reached
+                peak_value = min(depth_data);
+                overshoot_val = max(0, target_depth - peak_value);
+            else
+                % Descent: Overshoot is the maximum depth reached
+                peak_value = max(depth_data);
+                overshoot_val = max(0, peak_value - target_depth);
+            end
+            pct_overshoot = (overshoot_val / abs(target_depth - start_depth)) * 100;
+
+            % --- Settling Time Logic ---
             pct_tol      = 0.02;
             tolerance    = pct_tol * abs(target_depth - start_depth);
-
             error_array         = abs(depth_data - target_depth);
             outside_tol_indices = find(error_array > tolerance);
 
             if isempty(outside_tol_indices)
                 test_metrics.t_complete = 0;
-                test_metrics.message    = 'Ascent/Descent complete at t=0.0s (already at target)';
-
+                settle_msg = 'Settled at t=0.0s';
             elseif outside_tol_indices(end) == length(depth_data)
                 test_metrics.t_complete = NaN;
-                test_metrics.message    = sprintf('WARNING: Failed to settle within %d%% of target.', ...
-                    round(pct_tol*100));
+                settle_msg = 'WARNING: Failed to settle';
             else
-                settling_index          = outside_tol_indices(end) + 1;
-                t_complete              = time_data(settling_index);
-                test_metrics.t_complete = t_complete;
-                test_metrics.message    = sprintf('Ascent/Descent complete at t=%.1fs', t_complete);
+                test_metrics.t_complete = time_data(outside_tol_indices(end) + 1);
+                settle_msg = sprintf('Settled at t=%.1fs', test_metrics.t_complete);
             end
 
+            % Store and Print
+            test_metrics.overshoot_m = overshoot_val;
+            test_metrics.message = sprintf('%s | Overshoot: %.2fm (%.1f%%)', ...
+                settle_msg, overshoot_val, pct_overshoot);
+            
             fprintf('Done. %s\n', test_metrics.message);
 
         elseif t == 3
