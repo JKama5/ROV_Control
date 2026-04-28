@@ -20,7 +20,7 @@ clear tests;
 % WindEnum: 1=Calm, 2=Normal, 3=Stormy
 % CourseControlToggle: 0=Heading 1=Course
 Simulink.defineIntEnumType('Wind', ...
-    {'Calm', 'Normal', 'Stormy'}, [1; 2; 3]);
+    {'Off','Calm', 'Normal', 'Stormy'}, [-1; 1; 2; 3]);
 
 Simulink.defineIntEnumType('ControlMode', ...
     {'Heading', 'Course'}, [0; 1]);
@@ -34,7 +34,7 @@ CM=ControlMode.Course;
 
 
 % Test 1: The Broadside Wall (Stormy, 5m Hold, Max Whiplash)
-tests(1) = struct('name', 'The Broadside Wall',       'wind', Wind.Stormy, 'ctrl', CM, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+tests(1) = struct('name', 'The Broadside Wall',       'wind', Wind.Off, 'ctrl', CM, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 % Test 2: The Ekman Corkscrew (Stormy, 1m to 50m Descent, Hold Heading)
 tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', Wind.Stormy, 'ctrl', CM, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
