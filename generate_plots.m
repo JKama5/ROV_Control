@@ -240,3 +240,134 @@ saveas(fig6, 'figures/Test6_DeepFreeze.png');
 fprintf('Saved Test 6\n');
 
 fprintf('\nAll figures saved to /figures/\n');
+
+
+%% =========================================================
+% TEST 7: XY TRAJECTORY, HEADING, & CURRENT (EQUAL AXIS)
+% =========================================================
+fig7 = figure('Position', [100 100 900 900]);
+tiledlayout(3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+
+% Adjust these to tune the visual density of the arrows
+num_vectors = 45; 
+num_y_lines = 5;  
+
+for i = 1:3
+    ax = nexttile; hold on;
+    
+    fname = sprintf('The_Broadside_Wall_Seed_%d.mat', seeds(i));
+    load(fname, 'dummy_out');
+    
+    [t_xy, x] = extractSignal(dummy_out, 'x');
+    [~, y]    = extractSignal(dummy_out, 'y');
+    [~, yaw]  = extractSignal(dummy_out, 'yaw');
+    
+    dir_sig = dummy_out.logsout.get('Current_Direction');
+    t_dir   = dir_sig.Values.Time;
+    theta   = dir_sig.Values.Data; % Radians
+    
+    spd_sig = dummy_out.logsout.get('Current_Speed'); 
+    spd     = spd_sig.Values.Data;
+    
+    theta_interp = interp1(t_dir, theta, t_xy, 'linear', 'extrap');
+    spd_interp   = interp1(t_dir, spd, t_xy, 'linear', 'extrap');
+    
+    idx = round(linspace(1, length(t_xy), num_vectors));
+    idxLess = round(linspace(1, length(t_xy), round(num_vectors/3))); % Added round()
+    
+    x_quiv     = x(idx);
+    theta_quiv = theta_interp(idx);
+    spd_quiv   = spd_interp(idx);
+    
+    x_quiv_less = x(idxLess);
+    y_quiv_less = y(idxLess);
+    yaw_quiv    = yaw(idxLess);
+    
+    % ---------------------------------------------------------
+    % 1. PLOT CURRENT FIELD (Spread across a wide visual band)
+    % ---------------------------------------------------------
+    x_span = max(x) - min(x);
+    
+    % Create a visually pleasing band based on the total X distance (approx +/- 800m)
+    y_band = x_span / 12; 
+    y_min = -y_band; 
+    y_max = y_band;
+    
+    [X_grid, Y_grid] = meshgrid(x_quiv, linspace(y_min, y_max, num_y_lines));
+    Theta_grid = repmat(theta_quiv(:)', num_y_lines, 1);
+    Spd_grid   = repmat(spd_quiv(:)', num_y_lines, 1);
+    
+    % Set arrow length relative to total distance so they are visible
+    arrow_L = x_span / 30; 
+    
+    % Use cos/sin for radians
+    U_curr = (arrow_L * 0.8) .* Spd_grid .* cos(Theta_grid);
+    V_curr = (arrow_L * 0.8) .* Spd_grid .* sin(Theta_grid);
+    
+    % The '0' turns off autoscaling so our manual lengths are preserved
+    quiver(ax, X_grid, Y_grid, U_curr, V_curr, 0, 'Color', [0.4 0.6 0.9], ...
+           'LineWidth', 1, 'MaxHeadSize', 0.5, 'DisplayName', 'Current Direction');
+           
+    % ---------------------------------------------------------
+    % 2. PLOT ROV TRAJECTORY
+    % ---------------------------------------------------------
+    plot(ax, x, y, 'k-', 'LineWidth', 1.5, 'DisplayName', 'Trajectory');
+    
+    % ---------------------------------------------------------
+    % 3. PLOT ROV HEADING (YAW)
+    % ---------------------------------------------------------
+    u_yaw = arrow_L .* cos(yaw_quiv);
+    v_yaw = arrow_L .* sin(yaw_quiv);
+    
+    quiver(ax, x_quiv_less, y_quiv_less, u_yaw, v_yaw, 0, 'Color', 'r', ...
+           'LineWidth', 1.5, 'MaxHeadSize', 1.5, 'DisplayName', 'Heading');
+           
+    % ---------------------------------------------------------
+    % FORMATTING
+    % ---------------------------------------------------------
+    ylabel(ax, 'Y (m)');
+    title(ax, sprintf('Test 1: True Angle Vectors (%s)', seed_labels{i}));
+    
+    % Lock the axes, then force the Y limits so the grid looks nice
+    axis(ax, 'equal'); 
+    ylim(ax, [y_min*1.2, y_max*1.2]);
+    grid(ax, 'on');
+    
+    if i == 3
+        xlabel(ax, 'X (m)');
+        legend(ax, 'Location', 'best');
+    end
+end
+
+saveas(fig7, 'figures/Test7_VectorField_EqualAxis.png');
+fprintf('Saved Equal-Axis Vector Plot\n');
+
+%%
+% =========================================================
+% TEST 8: Y vs X TRAJECTORY OVERLAY (NON-EQUAL AXIS)
+% =========================================================
+fig8 = figure('Position', [100 100 900 400]);
+hold on;
+
+for i = 1:3
+    fname = sprintf('The_Broadside_Wall_Seed_%d.mat', seeds(i));
+    load(fname, 'dummy_out');
+    
+    [~, x] = extractSignal(dummy_out, 'x');
+    [~, y] = extractSignal(dummy_out, 'y');
+    
+    plot(x, y, 'Color', colors(i,:), 'LineWidth', 1.5, 'DisplayName', seed_labels{i});
+end
+
+% Formatting
+xlabel('X Position (m)');
+ylabel('Y Position (m)');
+title('Test 1: The Broadside Wall — Cross-Track Drift');
+legend('Location', 'best');
+grid on;
+
+% Add a target path reference line
+yline(0, 'k--', 'LineWidth', 1.2, 'HandleVisibility', 'off');
+
+saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
+fprintf('Saved Trajectory Overlay Plot\n');

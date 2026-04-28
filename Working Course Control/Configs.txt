@@ -1,0 +1,52 @@
+% =========================================================
+% RunTests2.m
+% Batch Test Runner — BlueROV2 PID Depth & Heading Controller
+% Chris Hunt, Jack Kamataris — RBE502 ROV Control Project
+%
+% Run ROV_PID_Init.m first to load controller gains into workspace.
+% =========================================================
+clear workspace
+% Define your test seeds
+test_seeds = [111, 222, 333];
+% test_seeds = [111];
+tests_to_run = [1:6];
+% Name of your Simulink model file
+mdl = 'AUVdepthHeadingControlWithRealisticWind';
+load_system(mdl);
+clear tests;
+% =========================================================
+% DEFINE THE TEST SUITE (Tiers 1, 2, and 3)
+% =========================================================
+% WindEnum: 1=Calm, 2=Normal, 3=Stormy
+% CourseControlToggle: 0=Heading 1=Course
+Simulink.defineIntEnumType('Wind', ...
+    {'Calm', 'Normal', 'Stormy'}, [1; 2; 3]);
+
+Simulink.defineIntEnumType('ControlMode', ...
+    {'Heading', 'Course'}, [0; 1]);
+
+
+kp=0.08;
+ki=0;
+kd=20;
+CM=ControlMode.Course;
+
+
+
+% Test 1: The Broadside Wall (Stormy, 5m Hold, Max Whiplash)
+tests(1) = struct('name', 'The Broadside Wall',       'wind', Wind.Stormy, 'ctrl', CM, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+
+% Test 2: The Ekman Corkscrew (Stormy, 1m to 50m Descent, Hold Heading)
+tests(2) = struct('name', 'The Ekman Corkscrew',      'wind', Wind.Stormy, 'ctrl', CM, 'z0', 1,   'zf', 50,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+
+% Test 3: The Silent Windup (Calm, 30m Hold)
+tests(3) = struct('name', 'The Silent Windup',        'wind', Wind.Calm, 'ctrl', CM, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+
+% Test 4: The Surface Breach (Stormy, 100m to 5m Ascent)
+tests(4) = struct('name', 'The Surface Breach',       'wind', Wind.Stormy, 'ctrl', CM, 'z0', 100, 'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+
+% Test 5: The Operational Envelope (Normal, 10m Hold, Maneuver 0 to -60 deg)
+tests(5) = struct('name', 'The Operational Envelope', 'wind', Wind.Normal, 'ctrl', CM, 'z0', 10,  'zf', 10,  'h0', 0, 'hf', -60, 'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+
+% Test 6: The Deep Freeze (Stormy, 100m Hold, Maneuver 0 to -60 deg)
+tests(6) = struct('name', 'The Deep Freeze',          'wind', Wind.Stormy, 'ctrl', CM, 'z0', 100, 'zf', 100, 'h0', 0, 'hf', -60, 'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
