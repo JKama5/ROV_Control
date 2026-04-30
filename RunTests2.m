@@ -82,9 +82,14 @@ for t = tests_to_run
         blk = find_system(mdl, 'BlockType', 'Step');
         depth_blk = blk{1};  % Desired depth block
         dummy = setBlockParameter(dummy, depth_blk, 'Before', num2str(tests(t).z0));
-         
+        
+
         % Run the simulation
         dummy_out = sim(dummy);
+        
+        inputRecord = tests(t);
+        inputRecord.active_seed = test_seeds(i);
+        dummy_out = setUserData(dummy_out, inputRecord);
         % try
         %     disp(dummy_out.logsout.getElementNames());
         % catch

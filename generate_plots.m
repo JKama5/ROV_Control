@@ -7,7 +7,7 @@
 % Saves all figures as .png to a /figures/ subfolder.
 % =========================================================
 
-close all; clc;
+close all; clc; clear
 mkdir('figures');
 
 set(0, 'DefaultAxesFontSize',    12);
@@ -20,6 +20,7 @@ colors = [0.122 0.471 0.706;
           0.890 0.102 0.110;
           0.200 0.627 0.173];
 seed_labels = {'Seed 111', 'Seed 222', 'Seed 333'};
+global seeds Test_names
 seeds = [111, 222, 333];
 
 function [t, d] = extractSignal(sim_out, name)
@@ -29,6 +30,58 @@ d   = sig.Values.Data;
 if size(d, 2) > 1; d = d(:,1); end
 end
 
+Test_names = {'Wind_Off',... //1
+    'High_Disturbance_Maintaining_Heading',...//2
+    'High_Disturbance_Maintaining_Course',...//3
+    'High_Disturbance_Maneuvering',...//4
+    'The_Ekman_Corkscrew',...//5
+    'The_Surface_Breach',...//6
+    'Combined_Accent_and Maneuver',...//7
+    'The_Silent_Windup'}; %8
+
+function [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(TestNum)
+    global seeds Test_names
+    for i = 1:length(seeds)
+        fname = sprintf('%s_Seed_%d.mat',Test_names{TestNum}, seeds(i));
+        load(fname, 'dummy_out', 'test_metrics');
+        [t, z]   = extractSignal(dummy_out, 'z');
+        [~,x] = extractSignal(dummy_out,'x');
+        [~,y] = extractSignal(dummy_out,'y');
+        dir_sig  = dummy_out.yout.get('Pre_Wrap_Current_Direction');
+        t_dir    = dir_sig.Values.Time;
+        dir_data = rad2deg(dir_sig.Values.Data);
+        inputParams=dummy_out.SimulationMetadata.UserData;
+    end
+end
+
+clear inputParams t z x y dir_sig t_dir dir_data
+global inputParams t z x y dir_sig t_dir dir_data
+[inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(4);
+[RMSE, ~, ~, ~, ~] = NumericalResults(4);
+function [RMSE, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(testNum)
+    global y x t inputParams
+    [RMSE, YmaxError, ZErrorBounds, ZOverShoot, SettleTime]=deal([]);
+    RMSList=[3,5,6,8];
+    RMSEList=[4,7];
+    YmaxErrorList=[2:8];
+    ZErrorBoundsList=[2,3,4,8];
+    ZOverShootList=[5,6,7];
+    SettleTimeList=ZOverShootList;
+    
+    if ismember(testNum,RMSList)
+        RMSE=rmse(y,ones(size(y))*mean(y));
+    elseif ismember(testNum,RMSEList)
+        ygoal=hypot(x,y)*sind(inputParams.hf);
+        % p = polyfit(t,y,1);
+        % ygoal = polyval(p,t);
+        RMSE=rmse(y,ygoal);
+    end
+
+
+end
+
+
+%%
 % =========================================================
 % TEST 1: THE BROADSIDE WALL
 % =========================================================
