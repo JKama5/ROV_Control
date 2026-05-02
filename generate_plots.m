@@ -36,7 +36,7 @@ Test_names = {'Wind_Off',... //1
     'High_Disturbance_Maneuvering',...//4
     'The_Ekman_Corkscrew',...//5
     'The_Surface_Breach',...//6
-    'Combined_Accent_and Maneuver',...//7
+    'Combined_Accent_and_Maneuver',...//7
     'The_Silent_Windup'}; %8
 
 function [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(TestNum)
@@ -54,13 +54,23 @@ function [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(TestN
     end
 end
 
-clear inputParams t z x y dir_sig t_dir dir_data
-global inputParams t z x y dir_sig t_dir dir_data
-[inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(4);
-[RMSE, ~, ~, ~, ~] = NumericalResults(4);
-function [RMSE, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(testNum)
-    global y x t inputParams
-    [RMSE, YmaxError, ZErrorBounds, ZOverShoot, SettleTime]=deal([]);
+for i=1:length(Test_names)
+    clear inputParams t z x y dir_sig t_dir dir_data
+    global inputParams t z x y dir_sig t_dir dir_data
+    [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(i);
+    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(i);
+    Test_names(i)
+    RMSE 
+    RMSEeq
+    YmaxError
+    ZErrorBounds
+    ZOverShoot
+    SettleTime
+end
+
+function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(testNum)
+    global x y z t inputParams
+    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime]=deal([]);
     RMSList=[3,5,6,8];
     RMSEList=[4,7];
     YmaxErrorList=[2:8];
@@ -71,13 +81,40 @@ function [RMSE, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResu
     if ismember(testNum,RMSList)
         RMSE=rmse(y,ones(size(y))*mean(y));
     elseif ismember(testNum,RMSEList)
-        ygoal=hypot(x,y)*sind(inputParams.hf);
         % p = polyfit(t,y,1);
         % ygoal = polyval(p,t);
-        RMSE=rmse(y,ygoal);
+        m=tand(inputParams.hf);
+        b=mean(y-m*x);
+        p=m.*x+b;
+        RMSE=rmse(y,p);
+        RMSEeq=[m,b];
+        ygoal=hypot(x,y)*sind(inputParams.hf);
+
+        if ismember(testNum,YmaxErrorList)
+            YmaxError=abs(ygoal(length(ygoal))-y(length(y)));
+        end
+    end
+    
+    if ismember(testNum,YmaxErrorList) && ~ismember(testNum,RMSEList)
+        YmaxError=max(abs(y));
     end
 
+    if ismember(testNum,ZErrorBoundsList)
+        ZErrorBounds=[min(z)-inputParams.zf,max(z)-inputParams.zf];
+    end
+    
+    if ismember(testNum,ZOverShootList)
+        if inputParams.z0<inputParams.zf
+           ZOverShoot=abs(max(z)-inputParams.zf); 
+        else
+            ZOverShoot=abs(min(z)-inputParams.zf); 
+        end
+    end
 
+    if ismember(testNum,SettleTimeList)
+        data= stepinfo(y,t, y(length(y)));
+        SettleTime = data.SettlingTime;
+    end
 end
 
 

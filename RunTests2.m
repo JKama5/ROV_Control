@@ -33,7 +33,7 @@ CM=ControlMode.Course;
 
 tests(1) = struct('name', 'Wind Off',        'wind', Wind.Off, 'ctrl', CM, 'z0', 30,  'zf', 30,  'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
-tests(2) = struct('name', 'High Disturbance Maintaining Heading',       'wind', Wind.Stormy, 'ctrl', CM, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
+tests(2) = struct('name', 'High Disturbance Maintaining Heading',       'wind', Wind.Stormy, 'ctrl', ControlMode.Heading, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
 tests(3) = struct('name', 'High Disturbance Maintaining Course',       'wind', Wind.Stormy, 'ctrl', CM, 'z0', 5,   'zf', 5,   'h0', 0, 'hf', 0,   'Kpz', kp,  'Kiz',ki,   'Kdz',kd);
 
