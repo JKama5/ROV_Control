@@ -42,15 +42,11 @@ for i=2:length(Test_names)
     [inputParams, globalT, globalZ, globalX, globalY, dir_sig, dir_data] = extractData(i);
     [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime] = NumericalResults(i);
     Test_names(i)
-    RMSE 
-    RMSEeq
-    YmaxError
-    ZErrorBounds
-    ZOverShoot
-    ZSettleTime
-    YSettleTime
     
-    figure;
+    data={RMSE, RMSEeq,YmaxError,ZErrorBounds,ZOverShoot,ZSettleTime,YSettleTime};
+    dataText={'RMSE', 'RMSEeq','YmaxError','ZErrorBounds','ZOverShoot','ZSettleTime','YSettleTime'};
+
+    
     for s=1:length(seeds)
         if inputParams.hf~=inputParams.h0
                 [test,index] = min(abs(globalT(:,s)-YSettleTime(s)))
@@ -60,7 +56,22 @@ for i=2:length(Test_names)
             XYbounds(s,:)=[1,size(globalT,1)];
         end
     end
-    basicXYPlot(i,XYbounds,YSettleTime); %remember for z plots, to extend them to the bounds of the longer XY plot to match them
+    bounds=[min(XYbounds(:,1)), max(XYbounds(:,2))];
+    figure;
+    basicXYPlot(i,bounds,YSettleTime,RMSEeq);
+    myText = {};
+    
+    for j = 1:length(data)
+        if ~isempty(data{j})
+            valStr = mat2str(data{j}, 4); 
+            lineStr = sprintf('%s: %s', dataText{j}, valStr);
+            myText{end+1} = lineStr; 
+        end
+    end
+    
+    dim = [.92 0.5 0.8 0.3]; 
+    annotation('textbox', dim, 'String', myText, 'BackgroundColor', 'white');
+    hold off
     
     if inputParams.zf~=inputParams.z0
         for s=1:length(seeds)
@@ -98,6 +109,7 @@ function [inputParams, t, z, x, y, dir_sig, dir_data] = extractData(TestNum)
     end
 end
 
+
 function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime] = NumericalResults(testNum)
     global globalX globalY globalZ globalT inputParams seeds
     [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime]=deal([]);
@@ -118,8 +130,6 @@ function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettl
         if ismember(testNum,RMSList)
             RMSE(:,i)=rmse(y,ones(size(y))*mean(y));
         elseif ismember(testNum,RMSEList)
-            % p = polyfit(t,y,1);
-            % ygoal = polyval(p,t);
             m=tand(inputParams.hf);
             b=mean(y-m*x);
             p=m.*x+b;
@@ -170,23 +180,20 @@ function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettl
                     YSettleTime(i) = NaN; 
                 end
             end
-            % heading=atan2(y,x);
-            % data= stepinfo(heading,t, heading(length(heading)),'SettlingTimeThreshold',0.15);
-            % YSettleTime(:,i) = data.SettlingTime;
         end
     end
 
 end
 
-function basicXYPlot(testNum,bounds,settleTime)
-    global globalX globalY  colors seed_lables inputParams Test_names
+function basicXYPlot(testNum,bounds,settleTime, RMSEeq)
+    global globalX globalY globalT colors seed_lables inputParams Test_names
     hold on
     for i = 1:3
-        x=globalX(bounds(i,1):bounds(i,2),i);
-        y=globalY(bounds(i,1):bounds(i,2),i);
+        x=globalX(bounds(1):bounds(2), i);
+        y=globalY(bounds(1):bounds(2), i);
         plot(x, y, 'Color', colors(i,:), 'LineWidth', 1.5, 'DisplayName', seed_lables{i});
         if ~isempty(settleTime)
-            settleIndex=round((4/5)*bounds(i,2));
+            [~, settleIndex] = min(abs(globalT(:,i) - settleTime(i)));
             xline(x(settleIndex),'--', 'Color',colors(i,:), 'DisplayName','Course settled within 15%')
         end
     end
@@ -205,8 +212,12 @@ function basicXYPlot(testNum,bounds,settleTime)
     % Add a target path reference line
     ygoal=x(:,1)*tand(inputParams.hf);
     plot(x,ygoal, 'k--', 'LineWidth', 1.2, 'DisplayName', 'Target path');
+    if ~isempty(RMSEeq)
+        Pathlable=sprintf('Mean Path; Error: %.2f (m)',RMSEeq(2));
+        plot(x,RMSEeq(1,1)*x+mean(RMSEeq(2,:)), 'm--', 'DisplayName', Pathlable);
+    end
     legend('Location', 'best');
-    hold off
+    % hold off
     % saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
     % fprintf('Saved Trajectory Overlay Plot\n');
 end
@@ -218,7 +229,7 @@ function basicZTPlot(testNum,bounds,settleTime)
         z=globalZ(bounds(1):bounds(2),i);
         t=globalT(bounds(1):bounds(2),i);
         plot(t, z, 'Color', colors(i,:), 'LineWidth', 1.5, 'DisplayName', seed_lables{i});
-        xline(settleTime,'--', 'Color',colors(i,:), 'DisplayName','depth settled within 2%')
+        xline(settleTime,'--', 'Color',colors(i,:), 'DisplayName','depth settled within 0.5m')
     end
     
     % Formatting
