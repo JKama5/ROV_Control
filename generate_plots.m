@@ -16,19 +16,15 @@ set(0, 'DefaultLineLineWidth',   1.5);
 set(0, 'DefaultAxesBox',         'on');
 set(0, 'DefaultFigureColor',     'w');
 
+global seeds Test_names colors seed_lables
+
+seed_lables = {'Seed 111', 'Seed 222', 'Seed 333'};
+
 colors = [0.122 0.471 0.706;
           0.890 0.102 0.110;
           0.200 0.627 0.173];
-seed_labels = {'Seed 111', 'Seed 222', 'Seed 333'};
-global seeds Test_names
-seeds = [111, 222, 333];
 
-function [t, d] = extractSignal(sim_out, name)
-sig = sim_out.logsout.get(name);
-t   = sig.Values.Time;
-d   = sig.Values.Data;
-if size(d, 2) > 1; d = d(:,1); end
-end
+seeds = [111, 222, 333];
 
 Test_names = {'Wind_Off',... //1
     'High_Disturbance_Maintaining_Heading',...//2
@@ -39,84 +35,210 @@ Test_names = {'Wind_Off',... //1
     'Combined_Accent_and_Maneuver',...//7
     'The_Silent_Windup'}; %8
 
-function [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(TestNum)
-    global seeds Test_names
-    for i = 1:length(seeds)
-        fname = sprintf('%s_Seed_%d.mat',Test_names{TestNum}, seeds(i));
-        load(fname, 'dummy_out', 'test_metrics');
-        [t, z]   = extractSignal(dummy_out, 'z');
-        [~,x] = extractSignal(dummy_out,'x');
-        [~,y] = extractSignal(dummy_out,'y');
-        dir_sig  = dummy_out.yout.get('Pre_Wrap_Current_Direction');
-        t_dir    = dir_sig.Values.Time;
-        dir_data = rad2deg(dir_sig.Values.Data);
-        inputParams=dummy_out.SimulationMetadata.UserData;
-    end
-end
 
-for i=1:length(Test_names)
-    clear inputParams t z x y dir_sig t_dir dir_data
-    global inputParams t z x y dir_sig t_dir dir_data
-    [inputParams, t, z, x, y, dir_sig, t_dir, dir_data] = extractData(i);
-    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(i);
+for i=2:length(Test_names)
+    clear inputParams globalT globalZ globalX globalY dir_sig dir_data
+    global inputParams globalT globalZ  globalX globalY dir_sig dir_data
+    [inputParams, globalT, globalZ, globalX, globalY, dir_sig, dir_data] = extractData(i);
+    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime] = NumericalResults(i);
     Test_names(i)
     RMSE 
     RMSEeq
     YmaxError
     ZErrorBounds
     ZOverShoot
-    SettleTime
+    ZSettleTime
+    YSettleTime
+    
+    figure;
+    for s=1:length(seeds)
+        if inputParams.hf~=inputParams.h0
+                [test,index] = min(abs(globalT(:,s)-YSettleTime(s)))
+                XYbounds(s,:)=[1,round(1.25*index)];
+            
+        else
+            XYbounds(s,:)=[1,size(globalT,1)];
+        end
+    end
+    basicXYPlot(i,XYbounds,YSettleTime); %remember for z plots, to extend them to the bounds of the longer XY plot to match them
+    
+    if inputParams.zf~=inputParams.z0
+        for s=1:length(seeds)
+            
+            [test,index] = min(abs(globalT(:,s)-ZSettleTime(s)))
+            Zbounds(s,:)=[1,round(1.25*index)];
+        end
+        bounds=[min(Zbounds(:,1)),round(max(Zbounds(:,2))*1.25)]
+        figure;
+        basicZTPlot(i,bounds,1.25*max(ZSettleTime))
+    end
 end
 
-function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime] = NumericalResults(testNum)
-    global x y z t inputParams
-    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, SettleTime]=deal([]);
+function [t, d] = extractSignal(sim_out, name)
+    sig = sim_out.logsout.get(name);
+    t   = sig.Values.Time;
+    d   = sig.Values.Data;
+    if size(d, 2) > 1
+        d = d(:,1);
+    end
+end
+
+function [inputParams, t, z, x, y, dir_sig, dir_data] = extractData(TestNum)
+    global seeds Test_names
+    for i = 1:length(seeds)
+        fname = sprintf('%s_Seed_%d.mat',Test_names{TestNum}, seeds(i));
+        load(fname, 'dummy_out', 'test_metrics');
+        [t(:,i), z(:,i)]   = extractSignal(dummy_out, 'z');
+        [~,x(:,i)] = extractSignal(dummy_out,'x');
+        [~,y(:,i)] = extractSignal(dummy_out,'y');
+        dir_sig(i)  = dummy_out.yout.get('Pre_Wrap_Current_Direction');
+        
+        dir_data(:,i) = rad2deg(dir_sig(i).Values.Data);
+        inputParams=dummy_out.SimulationMetadata.UserData;
+    end
+end
+
+function [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime] = NumericalResults(testNum)
+    global globalX globalY globalZ globalT inputParams seeds
+    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime]=deal([]);
     RMSList=[3,5,6,8];
     RMSEList=[4,7];
     YmaxErrorList=[2:8];
     ZErrorBoundsList=[2,3,4,8];
     ZOverShootList=[5,6,7];
-    SettleTimeList=ZOverShootList;
+    ZSettleTimeList=ZOverShootList;
+    YSettleTimeList=RMSEList;
     
-    if ismember(testNum,RMSList)
-        RMSE=rmse(y,ones(size(y))*mean(y));
-    elseif ismember(testNum,RMSEList)
-        % p = polyfit(t,y,1);
-        % ygoal = polyval(p,t);
-        m=tand(inputParams.hf);
-        b=mean(y-m*x);
-        p=m.*x+b;
-        RMSE=rmse(y,p);
-        RMSEeq=[m,b];
-        ygoal=hypot(x,y)*sind(inputParams.hf);
+    for i=1:length(seeds)
+        y=globalY(:,i);
+        x=globalX(:,i);
+        z=globalZ(:,i);
+        t=globalT(:,i);
 
-        if ismember(testNum,YmaxErrorList)
-            YmaxError=abs(ygoal(length(ygoal))-y(length(y)));
+        if ismember(testNum,RMSList)
+            RMSE(:,i)=rmse(y,ones(size(y))*mean(y));
+        elseif ismember(testNum,RMSEList)
+            % p = polyfit(t,y,1);
+            % ygoal = polyval(p,t);
+            m=tand(inputParams.hf);
+            b=mean(y-m*x);
+            p=m.*x+b;
+            RMSE(:,i)=rmse(y,p);
+            RMSEeq(:,i)=[m;b];
+            ygoal=hypot(x,y)*sind(inputParams.hf);
+    
+            if ismember(testNum,YmaxErrorList)
+                YmaxError(:,i)=abs(ygoal(length(ygoal))-y(length(y)));
+            end
+        end
+        
+        if ismember(testNum,YmaxErrorList) && ~ismember(testNum,RMSEList)
+            YmaxError(:,i)=max(abs(y));
+        end
+    
+        if ismember(testNum,ZErrorBoundsList)
+            ZErrorBounds(:,i)=[min(z)-inputParams.zf;max(z)-inputParams.zf];
+        end
+        
+        if ismember(testNum,ZOverShootList)
+            if inputParams.z0<inputParams.zf
+               ZOverShoot(:,i)=abs(max(z)-inputParams.zf); 
+            else
+                ZOverShoot(:,i)=abs(min(z)-inputParams.zf); 
+            end
+        end
+    
+        if ismember(testNum,ZSettleTimeList)
+            threshold=.5;
+            PercentThreshold=threshold/z(length(z));
+            data= stepinfo(z,t, z(length(z)), 'SettlingTimeThreshold',PercentThreshold);
+            ZSettleTime(:,i) = data.SettlingTime;
+        end
+    
+        if ismember(testNum,YSettleTimeList)
+            threshold=RMSE(:,i);
+            error=abs(p-y);
+            unsettled_indices = find(error > threshold);
+            if isempty(unsettled_indices)
+                YSettleTime(i) = t(1); 
+            else
+                last_unsettled_idx = unsettled_indices(end);
+                
+                if last_unsettled_idx < length(t)
+                    YSettleTime(i) = t(last_unsettled_idx + 1);
+                else
+                    YSettleTime(i) = NaN; 
+                end
+            end
+            % heading=atan2(y,x);
+            % data= stepinfo(heading,t, heading(length(heading)),'SettlingTimeThreshold',0.15);
+            % YSettleTime(:,i) = data.SettlingTime;
         end
     end
-    
-    if ismember(testNum,YmaxErrorList) && ~ismember(testNum,RMSEList)
-        YmaxError=max(abs(y));
-    end
 
-    if ismember(testNum,ZErrorBoundsList)
-        ZErrorBounds=[min(z)-inputParams.zf,max(z)-inputParams.zf];
-    end
-    
-    if ismember(testNum,ZOverShootList)
-        if inputParams.z0<inputParams.zf
-           ZOverShoot=abs(max(z)-inputParams.zf); 
-        else
-            ZOverShoot=abs(min(z)-inputParams.zf); 
-        end
-    end
-
-    if ismember(testNum,SettleTimeList)
-        data= stepinfo(y,t, y(length(y)));
-        SettleTime = data.SettlingTime;
-    end
 end
 
+function basicXYPlot(testNum,bounds,settleTime)
+    global globalX globalY  colors seed_lables inputParams Test_names
+    hold on
+    for i = 1:3
+        x=globalX(bounds(i,1):bounds(i,2),i);
+        y=globalY(bounds(i,1):bounds(i,2),i);
+        plot(x, y, 'Color', colors(i,:), 'LineWidth', 1.5, 'DisplayName', seed_lables{i});
+        if ~isempty(settleTime)
+            settleIndex=round((4/5)*bounds(i,2));
+            xline(x(settleIndex),'--', 'Color',colors(i,:), 'DisplayName','Course settled within 15%')
+        end
+    end
+    
+    % Formatting
+    xlabel('X Position (m)');
+    ylabel('Y Position (m)');
+    tName=replace(Test_names{testNum},"_"," ");
+    pName=sprintf('%s XY Position Plot',tName);
+    title(pName);
+    
+    grid on;
+    
+
+
+    % Add a target path reference line
+    ygoal=x(:,1)*tand(inputParams.hf);
+    plot(x,ygoal, 'k--', 'LineWidth', 1.2, 'DisplayName', 'Target path');
+    legend('Location', 'best');
+    hold off
+    % saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
+    % fprintf('Saved Trajectory Overlay Plot\n');
+end
+
+function basicZTPlot(testNum,bounds,settleTime)
+    global globalZ globalT  colors seed_lables inputParams Test_names
+    hold on
+    for i = 1:3
+        z=globalZ(bounds(1):bounds(2),i);
+        t=globalT(bounds(1):bounds(2),i);
+        plot(t, z, 'Color', colors(i,:), 'LineWidth', 1.5, 'DisplayName', seed_lables{i});
+        xline(settleTime,'--', 'Color',colors(i,:), 'DisplayName','depth settled within 2%')
+    end
+    
+    % Formatting
+    xlabel('Time (s)');
+    ylabel('Z Position (m)');
+    tName=replace(Test_names{testNum},"_"," ");
+    pName=sprintf('%s Z Position vs Time Plot',tName);
+    title(pName);
+    
+    grid on;
+    
+
+
+    % Add a target path reference line
+    yline(inputParams.zf, 'k--', 'LineWidth', 1.2, 'DisplayName', 'Target Depth');
+    legend('Location', 'best');
+    hold off
+    % saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
+    % fprintf('Saved Trajectory Overlay Plot\n');
+end
 
 %%
 % =========================================================
