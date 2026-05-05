@@ -79,6 +79,158 @@ for i = 2:length(Test_names)
     end
 end
 
+for i=2:length(Test_names)
+    clear inputParams globalT globalZ globalX globalY dir_sig dir_data globalYaw globalSpd globalDir
+    global inputParams globalT globalZ  globalX globalY dir_sig dir_data globalYaw globalSpd globalDir
+    
+    [inputParams, globalT, globalZ, globalX, globalY, dir_sig, dir_data] = extractData(i);
+    [RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime] = NumericalResults(i);
+    disp(Test_names(i));
+    
+    % --- 1. Evaluate Active Plots & Dynamic Layout ---
+    do_XY = true; 
+    do_ZT = (inputParams.zf ~= inputParams.z0);
+    do_VectorField = (i==2 || i==3);
+    do_second_VectorField = false;
+    
+    % Calculate total plots to determine row count
+    numPlots = do_XY + do_ZT + do_VectorField + do_second_VectorField;
+    
+    % Force at least 2 rows so the text box has good vertical space
+    numRows = max(2, numPlots); 
+    numCols = 3;
+    
+    % Open figure wide enough to support 3 columns
+    fig = figure('Name', Test_names{i}, 'Position', [100, 100, 1200, 600]); 
+    currentRow = 1;
+    
+    % --- 2. Generate Subplots ---
+    
+    % Plot 1: XY Plot
+    if do_XY
+        % Calculate bounds
+        for s=1:length(seeds)
+            if inputParams.hf~=inputParams.h0
+                [~,index] = min(abs(globalT(:,s)-YSettleTime(s)));
+                XYbounds(s,:)=[1,round(1.25*index)];
+            else
+                XYbounds(s,:)=[1,size(globalT,1)];
+            end
+        end
+        XY_bounds = [min(XYbounds(:,1)), max(XYbounds(:,2))];
+        
+        if numPlots == 1
+            idx = []; for r=1:numRows; idx = [idx, (r-1)*numCols+1, (r-1)*numCols+2]; end
+        else
+            idx = [(currentRow-1)*numCols+1, (currentRow-1)*numCols+2];
+        end
+        
+        subplot(numRows, numCols, idx);
+        basicXYPlot(i, XY_bounds, YSettleTime, RMSEeq);
+        
+        currentRow = currentRow + (numPlots > 1); 
+    end
+    
+    % Plot 2: ZT Plot
+    if do_ZT
+        for s=1:length(seeds)
+            [~,index] = min(abs(globalT(:,s)-ZSettleTime(s)));
+            Zbounds(s,:)=[1,round(1.25*index)];
+        end
+        ZT_bounds=[min(Zbounds(:,1)),round(max(Zbounds(:,2))*1.25)];
+        
+        idx = [(currentRow-1)*numCols+1, (currentRow-1)*numCols+2];
+        subplot(numRows, numCols, idx);
+        basicZTPlot(i, ZT_bounds, 1.25*max(ZSettleTime));
+        
+        currentRow = currentRow + 1;
+    end
+    
+    % Plot 3: First Vector Field
+    if do_VectorField
+        idx = [(currentRow-1)*numCols+1, (currentRow-1)*numCols+2];
+        subplot(numRows, numCols, idx);
+        basicVectorPlot(i, XY_bounds, 1); 
+        currentRow = currentRow + 1;
+    end
+    
+    % Plot 4: Second Vector Field
+    if do_second_VectorField
+        idx = [(currentRow-1)*numCols+1, (currentRow-1)*numCols+2];
+        subplot(numRows, numCols, idx);
+        basicVectorPlot(i, [32260,32340], 1);
+        currentRow = currentRow + 1;
+    end
+    
+    % --- 3. Text Box (Column 3) ---
+    data={RMSE, RMSEeq, YmaxError, ZErrorBounds, ZOverShoot, ZSettleTime, YSettleTime};
+    dataText={'RMSE', 'RMSEeq', 'YmaxError', 'ZErrorBounds', 'ZOverShoot', 'ZSettleTime', 'YSettleTime'};
+    
+    myText = {};
+    for j = 1:length(data)
+        if ~isempty(data{j})
+            myText{end+1} = sprintf('%s:', dataText{j});
+            
+            if contains(dataText{j}, 'Time')
+                unit = 's';
+            elseif strcmp(dataText{j}, 'RMSEeq')
+                unit = ''; 
+            else
+                unit = 'm'; 
+            end
+            
+            currentData = data{j};
+            
+            for s = 1:length(seeds)
+                if size(currentData, 1) == 1
+                    myText{end+1} = sprintf('    Seed %d: %.3g%s', seeds(s), currentData(1, s), unit);
+                elseif size(currentData, 1) == 2
+                    if strcmp(dataText{j}, 'ZErrorBounds')
+                        myText{end+1} = sprintf('    Seed %d: %.3g%s to %.3g%s', ...
+                            seeds(s), currentData(1, s), unit, currentData(2, s), unit);
+                    elseif strcmp(dataText{j}, 'RMSEeq')
+                        myText{end+1} = sprintf('    Seed %d: slope=%.3g, int=%.3g', ...
+                            seeds(s), currentData(1, s), currentData(2, s));
+                    else
+                        myText{end+1} = sprintf('    Seed %d: [%.3g, %.3g]', ...
+                            seeds(s), currentData(1, s), currentData(2, s));
+                    end
+                end
+            end
+            myText{end+1} = ' ';
+        end
+    end
+    
+    textIdx = 3:numCols:(numRows*numCols);
+    axText = subplot(numRows, numCols, textIdx);
+    axis(axText, 'off'); 
+    
+    text(0.5, 0.5, myText, 'Units', 'normalized', ...
+        'HorizontalAlignment', 'center', ...
+        'VerticalAlignment', 'middle', ...
+        'BackgroundColor', 'white', ...
+        'EdgeColor', 'k', ...
+        'Margin', 10, ...
+        'Interpreter', 'none');
+        
+    % --- 4. Save Figure to Folder ---
+    % Ensure the 'figures' directory exists so MATLAB doesn't throw a path error
+    if ~exist('figures', 'dir')
+        mkdir('figures');
+    end
+    
+    % Construct the file path using the Test_names cell array
+    fileName = sprintf('%s.png', Test_names{i});
+    fullFilePath = fullfile('figures', fileName);
+    
+    % Export as a high-resolution 300 DPI PNG (requires MATLAB R2020a or newer)
+    % (If you are on an older version, replace this line with: saveas(fig, fullFilePath); )
+    exportgraphics(fig, fullFilePath, 'Resolution', 300);
+    
+    disp(['Saved: ', fullFilePath]);
+        
+end
+
 function [t, d] = extractSignal(sim_out, name)
     sig = sim_out.logsout.get(name);
     t = sig.Values.Time;
@@ -89,7 +241,7 @@ function [t, d] = extractSignal(sim_out, name)
 end
 
 function [inputParams, t, z, x, y, dir_sig, dir_data] = extractData(TestNum)
-    global seeds Test_names
+    global seeds Test_names globalYaw globalSpd globalDir
     for i = 1:length(seeds)
         fname = sprintf('%s_Seed_%d.mat', Test_names{TestNum}, seeds(i));
         load(fname, 'dummy_out', 'test_metrics');
@@ -99,6 +251,20 @@ function [inputParams, t, z, x, y, dir_sig, dir_data] = extractData(TestNum)
         dir_sig(i) = dummy_out.yout.get('Pre_Wrap_Current_Direction');
         dir_data(:, i) = rad2deg(dir_sig(i).Values.Data);
         inputParams = dummy_out.SimulationMetadata.UserData;
+
+        [t(:,i), z(:,i)]   = extractSignal(dummy_out, 'z');
+        [~,x(:,i)] = extractSignal(dummy_out,'x');
+        [~,y(:,i)] = extractSignal(dummy_out,'y');
+        
+        [~, globalYaw(:,i)] = extractSignal(dummy_out, 'yaw');
+        dir_sig(i) = dummy_out.logsout.get('Current_Direction');
+
+        globalDir(:,i) = dir_sig(i).Values.Data; % Keep in RADIANS for the math
+        dir_data(:,i) = rad2deg(dir_sig(i).Values.Data); 
+        
+        spd_sig = dummy_out.logsout.get('Current_Speed');
+        globalSpd(:,i) = spd_sig.Values.Data;
+        inputParams=dummy_out.SimulationMetadata.UserData;
     end
 end
 
@@ -200,6 +366,31 @@ function basicXYPlot(testNum, bounds, settleTime, RMSEeq)
         plot(x, RMSEeq(1, 1)*x + mean(RMSEeq(2, :)), 'm--', 'DisplayName', Pathlabel);
     end
     legend('Location', 'best');
+    
+    % --- Dynamic Subtitle Logic ---
+    total_length = size(globalX, 1);
+    if bounds(1) > 1 || bounds(2) < total_length
+        start_m = globalX(bounds(1), 1);
+        end_m   = globalX(bounds(2), 1);
+        total_m = globalX(end, 1);
+        subtitle(sprintf('Plotted from x = %.0fm to %.0fm out of %.0fm', start_m, end_m, total_m));
+    end
+    % ------------------------------
+    
+    grid on;
+    
+    % Add a target path reference line
+    ygoal=x(:,1)*tand(inputParams.hf);
+    plot(x,ygoal, 'k--', 'LineWidth', 1.2, 'DisplayName', 'Target path');
+    if ~isempty(RMSEeq)
+        Pathlable=sprintf('Mean Path; Mean Error: %.2f (m)',RMSEeq(2));
+        plot(x,RMSEeq(1,1)*x+mean(RMSEeq(2,:)), 'm--', 'DisplayName', Pathlable);
+    end
+    legend('Location', 'best');
+    
+    % hold off
+    % saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
+    % fprintf('Saved Trajectory Overlay Plot\n');
 end
 
 function basicZTPlot(testNum, bounds, settleTime)
@@ -217,6 +408,21 @@ function basicZTPlot(testNum, bounds, settleTime)
     pName = sprintf('%s Z Position vs Time Plot', tName);
     title(pName);
     grid on;
+
+    
+    % --- Dynamic Subtitle Logic ---
+    total_length = size(globalT, 1);
+    if bounds(1) > 1 || bounds(2) < total_length
+        start_s = globalT(bounds(1), 1);
+        end_s   = globalT(bounds(2), 1);
+        total_s = globalT(end, 1);
+        subtitle(sprintf('Plotted from t = %.0fs to %.0fs out of %.0fs', start_s, end_s, total_s));
+    end
+    % ------------------------------
+    
+    grid on;
+    
+    % Add a target path reference line
     yline(inputParams.zf, 'k--', 'LineWidth', 1.2, 'DisplayName', 'Target Depth');
     legend('Location', 'best');
     hold off
@@ -524,3 +730,116 @@ saveas(fig8, 'figures/Test8_TrajectoryOverlay.png');
 fprintf('Saved Test 8\n');
 
 fprintf('\nAll figures saved to /figures/\n');
+function basicVectorPlot(testNum, bounds, seedIndex)
+    global globalX globalY globalYaw globalSpd globalDir colors seed_lables Test_names
+    
+    hold on;
+    % Adjust these to tune the visual density of the arrows
+    num_vectors = 45; 
+    num_heading_vectors = round(num_vectors / 3);
+    num_y_lines = 5;  
+    
+    % --- 1. Extract Bounded Data ---
+    x_b   = globalX(bounds(1):bounds(2), seedIndex);
+    y_b   = globalY(bounds(1):bounds(2), seedIndex);
+    
+    % CONVERT TO RADIANS IMMEDIATELY
+    yaw_b = deg2rad(globalYaw(bounds(1):bounds(2), seedIndex)); 
+    spd_b = globalSpd(bounds(1):bounds(2), seedIndex);
+    dir_b = deg2rad(globalDir(bounds(1):bounds(2), seedIndex));
+    
+    % --- 2. Calculate Bins for Averaging ---
+    % Create bin edges based on the number of requested vectors
+    bin_edges_curr = round(linspace(1, length(x_b), num_vectors + 1));
+    bin_edges_head = round(linspace(1, length(x_b), num_heading_vectors + 1));
+    
+    % Initialize arrays for the averaged values
+    [x_curr_avg, spd_curr_avg, dir_curr_avg] = deal(zeros(1, num_vectors));
+    [x_head_avg, y_head_avg, yaw_head_avg]   = deal(zeros(1, num_heading_vectors));
+    
+    % --- 3. Average Current Data (Circular Mean for Angles) ---
+    for k = 1:num_vectors
+        idx_range = bin_edges_curr(k):(bin_edges_curr(k+1)-1);
+        if isempty(idx_range); continue; end
+        
+        x_curr_avg(k)   = mean(x_b(idx_range));
+        spd_curr_avg(k) = mean(spd_b(idx_range));
+        % Circular mean for current direction
+        dir_curr_avg(k) = atan2(mean(sin(dir_b(idx_range))), mean(cos(dir_b(idx_range))));
+    end
+    
+    % --- 4. Average Heading Data (Circular Mean for Angles) ---
+    for k = 1:num_heading_vectors
+        idx_range = bin_edges_head(k):(bin_edges_head(k+1)-1);
+        if isempty(idx_range); continue; end
+        
+        x_head_avg(k) = mean(x_b(idx_range));
+        y_head_avg(k) = mean(y_b(idx_range));
+        % Circular mean for ROV heading
+        yaw_head_avg(k) = atan2(mean(sin(yaw_b(idx_range))), mean(cos(yaw_b(idx_range))));
+    end
+    
+    % --- 5. Dynamic Scaling Calculations ---
+    x_min = min(x_b);
+    x_max = max(x_b);
+    x_span = x_max - x_min;
+    if x_span == 0; x_span = 1; end % Prevent division by zero
+    
+    y_min_data = min(y_b);
+    y_max_data = max(y_b);
+    
+    % Create a vertical band that frames the ACTUAL data properly
+    y_buffer = x_span / 12; 
+    y_min = y_min_data - y_buffer; 
+    y_max = y_max_data + y_buffer;
+    
+    arrow_L = x_span / 30;
+    
+    % --- 6. Plotting ---
+    % Current Field 
+    [X_grid, Y_grid] = meshgrid(x_curr_avg, linspace(y_min, y_max, num_y_lines));
+    Theta_grid = repmat(dir_curr_avg(:)', num_y_lines, 1);
+    Spd_grid   = repmat(spd_curr_avg(:)', num_y_lines, 1);
+    
+    U_curr = (arrow_L * 0.8) .* Spd_grid .* cos(Theta_grid);
+    V_curr = (arrow_L * 0.8) .* Spd_grid .* sin(Theta_grid);
+    
+    % Plot current (Light Blue)
+    quiver(X_grid, Y_grid, U_curr, V_curr, 0, 'Color', [0.3010, 0.7450, 0.9330], ...
+           'LineWidth', 1, 'MaxHeadSize', 0.5, 'DisplayName', 'Current Direction');
+           
+    % Trajectory (Black)
+    plot(x_b, y_b, 'k-', 'LineWidth', 1.5, 'DisplayName', 'Trajectory ');
+    
+    % Heading Vectors (Red)
+    u_yaw = arrow_L .* cos(yaw_head_avg);
+    v_yaw = arrow_L .* sin(yaw_head_avg);
+    quiver(x_head_avg, y_head_avg, u_yaw, v_yaw, 0, 'Color', 'r', ...
+           'LineWidth', 1.5, 'MaxHeadSize', 1.5, 'DisplayName', 'Heading ');
+           
+    % --- 7. Formatting ---
+    xlabel('X Position (m)');
+    ylabel('Y Position (m)');
+    
+    tName = replace(Test_names{testNum}, "_", " ");
+    title(sprintf('%s Current Direction and Heading Overlay', tName));
+    subtitle(sprintf('(%s)',seed_lables{seedIndex}))
+    
+    axis equal; 
+    
+    % FORCE the limits after 'axis equal' to ensure nothing is clipped
+    xlim([x_min - (x_span*0.02), x_max + (x_span*0.02)]);
+    ylim([y_min, y_max]);
+    
+    grid on;
+    legend('Location', 'best');
+    
+    % --- Dynamic Subtitle ---
+    total_length = size(globalX, 1);
+    if bounds(1) > 1 || bounds(2) < total_length
+        start_m = globalX(bounds(1), 1);
+        end_m   = globalX(bounds(2), 1);
+        total_m = globalX(end, 1);
+        subtitle(sprintf('Averaged over %.1fm to %.1fm out of %.1fm', start_m, end_m, total_m));
+    end
+end
